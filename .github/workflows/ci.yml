@@ -1,36 +1,93 @@
-name: Spring Boot CI
+name: 🚀 Spring Boot CI/CD
+
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   pull_request:
-    branches: ["main"]
-# 2. 设置权限：允许写入包仓库（为将来推送镜像准备）
+    branches: [ "main" ]
+
+# 1. 设置必要权限
 permissions:
   contents: read
   packages: write
+  id-token: write # 必需，用于与k8s集群认证
+
+# 2. 定义环境变量，方便管理（特别是镜像标签）
+env:
+  REGISTRY: ghcr.io
+  # 镜像名称自动构建为：ghcr.io/你的用户名/仓库名/服务名
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  # 任务：构建与测试
+  # Job 1: 构建、测试所有服务
   build-and-test:
-    # 在最新的 Ubuntu 环境中运行
     runs-on: ubuntu-latest
-
+    # 关键：这将生成一个包含JAR的构建产物，供后续Job使用
+    outputs:
+      jar-artifact: ${{ steps.build.outputs.jar-path }}
     steps:
-      # 步骤 1: 检出代码 (官方动作)
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      # 步骤 2: 设置 Java 环境 (官方动作)
-      - name: ☕ Set up JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: '21'
-          distribution: 'temurin' # Eclipse Temurin JDK
+          distribution: 'temurin'
+      - name: 🔨 Build and Package All Services
+        id: build
+        run: |
+          # 在项目根目录执行，会构建所有子模块
+          mvn clean package -DskipTests
+          # 假设你的主服务JAR在 target/ 目录，这里示例路径，请按实际修改
+          echo "jar-path=target/*.jar" >> $GITHUB_OUTPUT
 
-      # 步骤 3: 构建项目（Maven示例）
-      # 如果是Gradle项目，将下一行替换为 `run: ./gradlew build`
-      - name: 🔨 Build with Maven
-        run: mvn clean compile
+  # Job 2: 为每个微服务构建并推送Docker镜像到GHCR
+  build-and-push-image:
+    needs: build-and-test # 依赖构建Job
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 这里是关键：定义你的微服务列表。未来新增服务，只需在这里添加一行。
+        service: ['user-service']
+    steps:
+      - uses: actions/checkout@v4
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: 🔐 Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }} # 使用GitHub自动生成的令牌，无需手动设置
+      - name: 🏗️ Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service }}/APP-META/cicd # 指向Dockerfile所在的具体子目录
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # 步骤 4: 运行测试（Maven示例）
-      - name: 🧪 Run Tests
-        run: mvn test
+  # Job 3: 部署到你的k3s集群（以更新user-service为例）
+  deploy-to-k3s:
+    needs: build-and-push-image # 依赖镜像推送Job
+    # 通常只在推送到main分支时自动部署，可根据需要调整
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🪣 Download kubeconfig
+        # 关键：从GitHub Secrets中获取你的k3s集群config文件
+        # 你需要提前将你的 ~/.kube/config 文件内容存入名为 KUBE_CONFIG 的Secret
+        run: echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+      - name: 🛠️ Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      - name: 🚀 Deploy to k3s
+        # 更新k3s集群中指定Deployment的镜像，触发滚动更新
+        run: |
+          export KUBECONFIG=kubeconfig.yaml
+          kubectl set image deployment/user-service-deployment \
+            user-service-container=ghcr.io/${{ env.IMAGE_NAME }}/user-service:${{ github.sha }} \
+            --namespace=default
+          kubectl rollout status deployment/user-service-deployment --namespace=default
