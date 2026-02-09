@@ -32,13 +32,21 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-      - name: 🔨 构建打包所有的微服务
-        id: build
+#      - name: 🔨 构建打包所有的微服务
+#        id: build
+#        run: |
+#          # 在项目根目录执行，会构建所有子模块
+#          mvn clean package -DskipTests
+#          # 假设你的主服务JAR在 target/ 目录，这里示例路径，请按实际修改
+#          echo "jar-path=target/*.jar" >> $GITHUB_OUTPUT
+      - name: 🔨 安装所有基础模块
         run: |
-          # 在项目根目录执行，会构建所有子模块
-          mvn clean package -DskipTests
-          # 假设你的主服务JAR在 target/ 目录，这里示例路径，请按实际修改
-          echo "jar-path=target/*.jar" >> $GITHUB_OUTPUT
+        # 关键：先跳过repackage安装所有库模块
+          mvn clean install -DskipTests -Dspring-boot.repackage.skip=true
+      - name: 📦 单独打包可执行的starter模块
+        run: |
+        # 只构建需要打包成镜像的模块
+          mvn clean package -pl ${{ matrix.service }}/${{ matrix.service }}-starter -am -DskipTests
 
   # Job 2: 为每个微服务构建并推送Docker镜像到GHCR
   build-and-push-image:
