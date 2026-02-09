@@ -19,5 +19,6 @@ public class Application {
 
     private static void logApplicationStartup(ConfigurableEnvironment environment) {
         String appName = environment.getProperty("spring.application.name", "application");
+        String a = "1";
     }
 }
