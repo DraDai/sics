@@ -21,6 +21,7 @@
         <!-- Spring 版本 -->
         <spring-boot.version>3.2.5</spring-boot.version>
         <spring-cloud.version>2023.0.2</spring-cloud.version>
+        <spring-cloud-kubernetes.version>3.2.3</spring-cloud-kubernetes.version>
 
         <!-- 工具版本 -->
         <lombok.version>1.18.30</lombok.version>
@@ -54,29 +55,10 @@
 
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
-                <artifactId>spring-cloud-starter-kubernetes-client-all</artifactId>
-                <version>${spring-cloud.version}</version>
-            </dependency>
-
-            <!-- 配置中心客户端 -->
-            <dependency>
-                <groupId>org.springframework.cloud</groupId>
-                <artifactId>spring-cloud-starter-config</artifactId>
-                <version>${spring-cloud.version}</version>
-            </dependency>
-
-            <!-- 负载均衡 -->
-            <dependency>
-                <groupId>org.springframework.cloud</groupId>
-                <artifactId>spring-cloud-starter-loadbalancer</artifactId>
-                <version>${spring-cloud.version}</version>
-            </dependency>
-
-            <!-- 断路器/熔断器 -->
-            <dependency>
-                <groupId>org.springframework.cloud</groupId>
-                <artifactId>spring-cloud-starter-circuitbreaker-reactor-resilience4j</artifactId>
-                <version>${spring-cloud.version}</version>
+                <artifactId>spring-cloud-kubernetes-dependencies</artifactId>
+                <version>${spring-cloud-kubernetes.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
 
             <!-- ========== 工具类依赖 ========== -->
